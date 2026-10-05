@@ -167,7 +167,14 @@ async function callClaude(system, messages, maxTokens = 1000) {
       messages,
     }),
   });
-  if (!res.ok) throw new Error("Connection failed (" + res.status + ")");
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body.error ? " — " + body.error : "";
+    } catch (e) {}
+    throw new Error("Connection failed (" + res.status + ")" + detail);
+  }
   const data = await res.json();
   return data.content
     .filter((b) => b.type === "text")
