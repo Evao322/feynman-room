@@ -26,11 +26,10 @@ const SANS =
 
 /* ─── api ─────────────────────────────────────────────── */
 async function callClaude(system, messages, maxTokens = 1000) {
-  const res = await fetch("http://localhost:3001/api/claude", {
+  const res = await fetch("http://localhost:3001/api/llm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
       max_tokens: maxTokens,
       system,
       messages,

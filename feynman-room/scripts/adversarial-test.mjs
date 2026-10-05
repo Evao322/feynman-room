@@ -13,7 +13,7 @@
 import { writeFile } from "node:fs/promises";
 import { DOI_SYSTEM, RESTATE_CMD, CHECK_SYSTEM } from "../src/prompts.js";
 
-const PROXY = process.env.PROXY_URL || "http://localhost:3001/api/claude";
+const PROXY = process.env.PROXY_URL || "http://localhost:3001/api/llm";
 const CONCEPT = "Why does conservation of momentum require zero net external force";
 
 async function callClaude(system, messages, maxTokens = 400) {
