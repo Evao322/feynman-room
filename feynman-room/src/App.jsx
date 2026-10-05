@@ -335,6 +335,7 @@ export default function FeynmanRoom() {
   const scrollRef = useRef(null);
   const recRef = useRef(null);
   const baseRef = useRef("");
+  const wantListenRef = useRef(false);
 
   const myTurns = turns.filter((t) => t.role === "me" && !t.hidden);
   const myCount = myTurns.length;
@@ -363,10 +364,33 @@ export default function FeynmanRoom() {
       if (fin) baseRef.current += fin;
       setDraft(baseRef.current + interim);
     };
-    rec.onerror = () => setListening(false);
-    rec.onend = () => setListening(false);
+    rec.onerror = (e) => {
+      const fatal = ["not-allowed", "service-not-allowed", "audio-capture"].includes(e.error);
+      if (fatal) {
+        wantListenRef.current = false;
+        setListening(false);
+        setErr(
+          e.error === "audio-capture"
+            ? "No microphone found. Please check your device's microphone."
+            : "Microphone access was denied. Please allow microphone access in your browser settings."
+        );
+      }
+      // Other errors (e.g. "no-speech", "network") are recoverable — onend will restart if still listening.
+    };
+    rec.onend = () => {
+      if (wantListenRef.current) {
+        try {
+          rec.start();
+          return;
+        } catch (e) {
+          // fall through to stop state if restart fails
+        }
+      }
+      setListening(false);
+    };
     recRef.current = rec;
     return () => {
+      wantListenRef.current = false;
       try {
         rec.stop();
       } catch (e) {}
@@ -377,14 +401,19 @@ export default function FeynmanRoom() {
     const rec = recRef.current;
     if (!rec) return;
     if (listening) {
+      wantListenRef.current = false;
       rec.stop();
       setListening(false);
     } else {
+      setErr("");
       baseRef.current = draft ? draft + " " : "";
+      wantListenRef.current = true;
       try {
         rec.start();
         setListening(true);
-      } catch (e) {}
+      } catch (e) {
+        wantListenRef.current = false;
+      }
     }
   };
 
@@ -898,15 +927,15 @@ export default function FeynmanRoom() {
                   onClick={toggleMic}
                   disabled={busy}
                   style={{
-                    width: 38,
-                    height: 38,
+                    width: 57,
+                    height: 57,
                     flexShrink: 0,
-                    borderRadius: 19,
+                    borderRadius: 28.5,
                     cursor: "pointer",
                     border: "none",
                     background: listening ? C.red : C.fill,
                     color: listening ? "#fff" : C.muted,
-                    fontSize: 15,
+                    fontSize: 23,
                   }}
                   title={listening ? "Stop" : "Start speaking"}
                 >
