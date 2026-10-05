@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 
 // Accepts the same shape the app already sends to Claude ({ system, messages, max_tokens })
 // and adapts it to Gemini's generateContent format, then adapts the reply back to the
