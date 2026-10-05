@@ -44,9 +44,9 @@ const STRINGS = {
     howThisWorks: "How this works",
     guideTitle: "How this works",
     guideIntro:
-      "Dodo has never studied what you're about to explain, and he won't teach you. He only raises his hand when you skip a step. The place where you cannot go on is the place where you haven't yet learned.",
+      "Ah Dai has never studied what you're about to explain, and he won't teach you. He only raises his hand when you skip a step. The place where you cannot go on is the place where you haven't yet learned.",
     guideSteps: [
-      ["Opening statement", "Without looking at your notes, explain the concept. Dodo will not interrupt."],
+      ["Opening statement", "Without looking at your notes, explain the concept. Ah Dai will not interrupt."],
       ["Questioning", 'He asks one question at a time, two sentences max. If you\'re stuck, press "I\'m stuck" — he won\'t give you a hint.'],
       ["Outsider test", "He repeats back what he understood in his own words. Anything you left out, he leaves out too — the holes are what you missed."],
       ["Three-colour marking", "Fluent sections go green, hesitant ones amber, stuck ones red."],
@@ -56,17 +56,17 @@ const STRINGS = {
     tabMark: "Mark",
     tabCheck: "Check",
     dodoGreeting:
-      "Hi, I'm Dodo. I have never studied this. What are you going to explain to me? Start talking — I won't interrupt. When you're done, I'll start asking.",
+      "Hi, I'm Ah Dai. I have never studied this. What are you going to explain to me? Start talking — I won't interrupt. When you're done, I'll start asking.",
     explainPlaceholder: "Explain the concept…",
     keepGoingPlaceholder: "Keep going…",
     listeningPlaceholder: "Recording… tap the square to stop",
     transcribingPlaceholder: "Transcribing…",
     imStuck: "I'm stuck",
-    askRepeat: "Ask Dodo to repeat back",
+    askRepeat: "Ask Ah Dai to repeat back",
     done: "Done",
-    meDodoCount: (me, dodo) => `Me ${me} · Dodo ${dodo}`,
+    meDodoCount: (me, dodo) => `Me ${me} · Ah Dai ${dodo}`,
     ruleBreaksSuffix: (n) => ` · Rule breaks ${n}`,
-    dodoThinking: "Dodo is thinking…",
+    dodoThinking: "Ah Dai is thinking…",
     flagTitle: "Flag a rule break",
     marking: "Marking",
     nothingHereYet: "Nothing here yet — go back to Talk first.",
@@ -107,9 +107,9 @@ const STRINGS = {
     howThisWorks: "使用說明",
     guideTitle: "使用說明",
     guideIntro:
-      "多多從來沒有學過你即將要解釋的東西，他也不會教你。他只會在你跳過某個步驟時舉手。你講不下去的地方，就是你還沒學會的地方。",
+      "阿呆從來沒有學過你即將要解釋的東西，他也不會教你。他只會在你跳過某個步驟時舉手。你講不下去的地方，就是你還沒學會的地方。",
     guideSteps: [
-      ["開場陳述", "不要看筆記，直接解釋這個概念。多多不會打斷你。"],
+      ["開場陳述", "不要看筆記，直接解釋這個概念。阿呆不會打斷你。"],
       ["提問階段", "他一次只問一個問題，最多兩句話。如果卡住了，按「我卡住了」——他不會給你提示。"],
       ["外行人複述測試", "他會用自己的話把聽到的內容複述一次。你漏講的部分，他也會漏掉——那些空缺就是你還沒搞懂的地方。"],
       ["三色標記", "講得流暢的標綠色，猶豫的標黃色，卡住的標紅色。"],
@@ -119,17 +119,17 @@ const STRINGS = {
     tabMark: "標記",
     tabCheck: "查核",
     dodoGreeting:
-      "嗨，我是多多。這個我完全沒學過。你要跟我解釋什麼？開始講吧——我不會打斷你。你講完之後，我會開始發問。",
+      "嗨，我是阿呆。這個我完全沒學過。你要跟我解釋什麼？開始講吧——我不會打斷你。你講完之後，我會開始發問。",
     explainPlaceholder: "開始解釋這個概念…",
     keepGoingPlaceholder: "繼續講…",
     listeningPlaceholder: "錄音中…再按一次方塊停止",
     transcribingPlaceholder: "轉換文字中…",
     imStuck: "我卡住了",
-    askRepeat: "請多多複述一次",
+    askRepeat: "請阿呆複述一次",
     done: "完成",
-    meDodoCount: (me, dodo) => `我 ${me} · 多多 ${dodo}`,
+    meDodoCount: (me, dodo) => `我 ${me} · 阿呆 ${dodo}`,
     ruleBreaksSuffix: (n) => ` · 違規次數 ${n}`,
-    dodoThinking: "多多正在想…",
+    dodoThinking: "阿呆正在想…",
     flagTitle: "標記違規",
     marking: "標記",
     nothingHereYet: "這裡還沒有內容——先回到對話畫面吧。",
@@ -517,7 +517,7 @@ export default function FeynmanRoom() {
     L.push("");
     L.push("── Colour statistics ──");
     L.push("Green (fluent) " + counts.green + "   Amber (hesitant) " + counts.amber + "   Red (stuck) " + counts.red);
-    L.push("Dodo rule-breaks: " + flagCount);
+    L.push("Ah Dai rule-breaks: " + flagCount);
     L.push("");
     L.push("── Transcript ──");
     turns
@@ -527,7 +527,7 @@ export default function FeynmanRoom() {
           const tag = t.color === "green" ? "[Green]" : t.color === "amber" ? "[Amber]" : t.color === "red" ? "[Red]" : "[Unmarked]";
           L.push("Me " + tag + ": " + t.text);
         } else {
-          L.push("Dodo" + (t.flagged ? "[RULE BREAK]" : "") + ": " + t.text);
+          L.push("Ah Dai" + (t.flagged ? "[RULE BREAK]" : "") + ": " + t.text);
         }
       });
     if (report) {
