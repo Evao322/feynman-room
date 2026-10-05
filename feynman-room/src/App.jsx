@@ -40,6 +40,10 @@ const STRINGS = {
     voiceLanguageLabel: "Voice language",
     cantonese: "Cantonese",
     mandarin: "Mandarin",
+    gradeLabel: "Grade level",
+    gradeElementary: "Elementary School",
+    gradeSecondary: "Secondary School",
+    gradeUniversity: "University",
     enterRoom: "Enter Room",
     howThisWorks: "How this works",
     guideTitle: "How this works",
@@ -103,6 +107,10 @@ const STRINGS = {
     voiceLanguageLabel: "語音辨識語言",
     cantonese: "粵語",
     mandarin: "普通話",
+    gradeLabel: "年級",
+    gradeElementary: "小學",
+    gradeSecondary: "中學",
+    gradeUniversity: "大學",
     enterRoom: "進入房間",
     howThisWorks: "使用說明",
     guideTitle: "使用說明",
@@ -354,11 +362,14 @@ export default function FeynmanRoom() {
   const [showGuide, setShowGuide] = useState(false);
   const [lang, setLang] = useState("en"); // en | zh
   const [voiceLang, setVoiceLang] = useState("mandarin"); // cantonese | mandarin (used when lang === "zh")
+  const [grade, setGrade] = useState("secondary"); // elementary | secondary | university
 
   const [transcribing, setTranscribing] = useState(false);
 
   const t = STRINGS[lang];
   const prompts = PROMPTS[lang];
+  const gradeLabels = { elementary: t.gradeElementary, secondary: t.gradeSecondary, university: t.gradeUniversity };
+  const gradeLabel = gradeLabels[grade];
 
   const scrollRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -455,7 +466,11 @@ export default function FeynmanRoom() {
     setBusy(true);
     try {
       const conceptHeader = lang === "zh" ? "\n\n# 使用者今天要解釋的概念\n" : "\n\n# Concept the user is explaining today\n";
-      const reply = await callClaude(prompts.DOI_SYSTEM + conceptHeader + concept, msgs, hidden ? 700 : 300);
+      const gradeHeader =
+        lang === "zh"
+          ? "\n\n# 使用者的年級\n" + gradeLabel + "\n請把你問題的用詞與難度調整到適合這個年級，但仍然要完全遵守以上所有規則。"
+          : "\n\n# The user's grade level\n" + gradeLabel + "\nAdjust the vocabulary and complexity of your questions to suit this grade level, while still following every rule above exactly.";
+      const reply = await callClaude(prompts.DOI_SYSTEM + conceptHeader + concept + gradeHeader, msgs, hidden ? 700 : 300);
       push("doi", reply);
       if (phase === "monologue") setPhase("dialogue");
     } catch (e) {
@@ -478,8 +493,12 @@ export default function FeynmanRoom() {
     try {
       const materialHeader = lang === "zh" ? "[課程教材]\n" : "[COURSE MATERIAL]\n";
       const transcriptHeader = lang === "zh" ? "\n\n[口頭解釋逐字稿]\n概念：" : "\n\n[MY SPOKEN EXPLANATION TRANSCRIPT]\nConcept: ";
+      const gradeHeader =
+        lang === "zh"
+          ? "\n\n# 使用者的年級\n" + gradeLabel + "\n你的判斷標準不變，但描述差異或缺漏時，用詞難度請符合這個年級。"
+          : "\n\n# The user's grade level\n" + gradeLabel + "\nYour comparison criteria stay the same, but use vocabulary appropriate for this grade level when describing differences or omissions.";
       const out = await callClaude(
-        prompts.CHECK_SYSTEM,
+        prompts.CHECK_SYSTEM + gradeHeader,
         [
           {
             role: "user",
@@ -514,6 +533,7 @@ export default function FeynmanRoom() {
     L.push("Date: " + new Date().toLocaleString("en-US"));
     L.push("Input mode: " + (mode === "voice" ? "Voice" : "Typing"));
     L.push("Language: " + (lang === "zh" ? "Traditional Chinese (" + (voiceLang === "cantonese" ? "Cantonese" : "Mandarin") + ")" : "English"));
+    L.push("Grade level: " + gradeLabel);
     L.push("");
     L.push("── Colour statistics ──");
     L.push("Green (fluent) " + counts.green + "   Amber (hesitant) " + counts.amber + "   Red (stuck) " + counts.red);
@@ -687,6 +707,49 @@ export default function FeynmanRoom() {
                 </div>
               </div>
             )}
+
+            <div style={{ marginTop: 18 }}>
+              <Eyebrow>{t.gradeLabel}</Eyebrow>
+              <div style={{ position: "relative", marginTop: 8 }}>
+                <select
+                  className="fr-in"
+                  value={grade}
+                  onChange={(e) => setGrade(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 36px 12px 14px",
+                    fontFamily: SANS,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    background: C.fill,
+                    border: "none",
+                    borderRadius: 12,
+                    color: C.ink,
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    MozAppearance: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="elementary">{t.gradeElementary}</option>
+                  <option value="secondary">{t.gradeSecondary}</option>
+                  <option value="university">{t.gradeUniversity}</option>
+                </select>
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                    color: C.muted,
+                    fontSize: 12,
+                  }}
+                >
+                  ▾
+                </span>
+              </div>
+            </div>
           </div>
 
           <div style={{ marginTop: 16 }}>
