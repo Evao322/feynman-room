@@ -35,7 +35,7 @@ const STRINGS = {
     inputModeLabel: "Input mode",
     typing: "Typing",
     voice: "Voice",
-    voiceUnsupported: "This browser does not support speech recognition. Please use Chrome, or switch to typing.",
+    voiceUnsupported: "This browser does not support microphone recording. Please switch to typing.",
     languageLabel: "Language",
     voiceLanguageLabel: "Voice language",
     cantonese: "Cantonese",
@@ -59,7 +59,8 @@ const STRINGS = {
       "Hi, I'm Dodo. I have never studied this. What are you going to explain to me? Start talking — I won't interrupt. When you're done, I'll start asking.",
     explainPlaceholder: "Explain the concept…",
     keepGoingPlaceholder: "Keep going…",
-    listeningPlaceholder: "Listening… tap the square to stop",
+    listeningPlaceholder: "Recording… tap the square to stop",
+    transcribingPlaceholder: "Transcribing…",
     imStuck: "I'm stuck",
     askRepeat: "Ask Dodo to repeat back",
     done: "Done",
@@ -97,7 +98,7 @@ const STRINGS = {
     inputModeLabel: "輸入方式",
     typing: "打字",
     voice: "語音",
-    voiceUnsupported: "這個瀏覽器不支援語音辨識，請改用 Chrome，或切換成打字。",
+    voiceUnsupported: "這個瀏覽器不支援錄音功能，請切換成打字。",
     languageLabel: "顯示語言",
     voiceLanguageLabel: "語音辨識語言",
     cantonese: "粵語",
@@ -121,7 +122,8 @@ const STRINGS = {
       "嗨，我是多多。這個我完全沒學過。你要跟我解釋什麼？開始講吧——我不會打斷你。你講完之後，我會開始發問。",
     explainPlaceholder: "開始解釋這個概念…",
     keepGoingPlaceholder: "繼續講…",
-    listeningPlaceholder: "聆聽中…再按一次方塊停止",
+    listeningPlaceholder: "錄音中…再按一次方塊停止",
+    transcribingPlaceholder: "轉換文字中…",
     imStuck: "我卡住了",
     askRepeat: "請多多複述一次",
     done: "完成",
@@ -153,7 +155,31 @@ const STRINGS = {
   },
 };
 
-const VOICE_LANG_CODES = { cantonese: "yue-HK", mandarin: "zh-TW" };
+const VOICE_LANG_LABEL = {
+  en: { _: "English" },
+  zh: { mandarin: "Mandarin Chinese", cantonese: "Cantonese" },
+};
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function transcribeAudio(base64, mimeType, languageHint) {
+  const url = import.meta.env.DEV ? "http://localhost:3001/api/transcribe" : "/api/transcribe";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audioBase64: base64, mimeType, languageHint }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Transcription failed (" + res.status + ")");
+  return data.text;
+}
 
 /* ─── api ─────────────────────────────────────────────── */
 async function callClaude(system, messages, maxTokens = 1000) {
@@ -329,91 +355,71 @@ export default function FeynmanRoom() {
   const [lang, setLang] = useState("en"); // en | zh
   const [voiceLang, setVoiceLang] = useState("mandarin"); // cantonese | mandarin (used when lang === "zh")
 
+  const [transcribing, setTranscribing] = useState(false);
+
   const t = STRINGS[lang];
   const prompts = PROMPTS[lang];
 
   const scrollRef = useRef(null);
-  const recRef = useRef(null);
-  const baseRef = useRef("");
-  const wantListenRef = useRef(false);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const streamRef = useRef(null);
 
   const myTurns = turns.filter((t) => t.role === "me" && !t.hidden);
   const myCount = myTurns.length;
 
-  const recognitionLang = lang === "zh" ? VOICE_LANG_CODES[voiceLang] : "en-US";
+  const languageHint = lang === "zh" ? VOICE_LANG_LABEL.zh[voiceLang] : VOICE_LANG_LABEL.en._;
 
-  /* speech recognition */
+  /* mic support check — MediaRecorder works in both Chrome and Safari (14.1+), unlike SpeechRecognition */
   useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setVoiceOK(false);
+    const ok = typeof window !== "undefined" && !!window.MediaRecorder && !!navigator.mediaDevices?.getUserMedia;
+    setVoiceOK(ok);
+  }, []);
+
+  const pickMimeType = () => {
+    const candidates = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+    return candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m));
+  };
+
+  const toggleMic = async () => {
+    if (listening) {
+      mediaRecorderRef.current && mediaRecorderRef.current.stop();
       return;
     }
-    const rec = new SR();
-    rec.lang = recognitionLang;
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (e) => {
-      let fin = "";
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) fin += t;
-        else interim += t;
-      }
-      if (fin) baseRef.current += fin;
-      setDraft(baseRef.current + interim);
-    };
-    rec.onerror = (e) => {
-      const fatal = ["not-allowed", "service-not-allowed", "audio-capture"].includes(e.error);
-      if (fatal) {
-        wantListenRef.current = false;
+    setErr("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = pickMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        streamRef.current && streamRef.current.getTracks().forEach((tr) => tr.stop());
         setListening(false);
-        setErr(
-          e.error === "audio-capture"
-            ? "No microphone found. Please check your device's microphone."
-            : "Microphone access was denied. Please allow microphone access in your browser settings."
-        );
-      }
-      // Other errors (e.g. "no-speech", "network") are recoverable — onend will restart if still listening.
-    };
-    rec.onend = () => {
-      if (wantListenRef.current) {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType || "audio/webm" });
+        if (blob.size === 0) return;
+        setTranscribing(true);
         try {
-          rec.start();
-          return;
+          const base64 = await blobToBase64(blob);
+          const text = await transcribeAudio(base64, blob.type, languageHint);
+          if (text) setDraft((d) => (d ? d + " " : "") + text);
         } catch (e) {
-          // fall through to stop state if restart fails
+          setErr(e.message);
         }
-      }
-      setListening(false);
-    };
-    recRef.current = rec;
-    return () => {
-      wantListenRef.current = false;
-      try {
-        rec.stop();
-      } catch (e) {}
-    };
-  }, [recognitionLang]);
-
-  const toggleMic = () => {
-    const rec = recRef.current;
-    if (!rec) return;
-    if (listening) {
-      wantListenRef.current = false;
-      rec.stop();
-      setListening(false);
-    } else {
-      setErr("");
-      baseRef.current = draft ? draft + " " : "";
-      wantListenRef.current = true;
-      try {
-        rec.start();
-        setListening(true);
-      } catch (e) {
-        wantListenRef.current = false;
-      }
+        setTranscribing(false);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setListening(true);
+    } catch (e) {
+      setErr(
+        e.name === "NotFoundError"
+          ? "No microphone found. Please check your device's microphone."
+          : "Microphone access was denied. Please allow microphone access in your browser settings."
+      );
     }
   };
 
@@ -442,15 +448,10 @@ export default function FeynmanRoom() {
     const text = (textOverride ?? draft).trim();
     if (!text || busy) return;
     setErr("");
-    if (listening) {
-      recRef.current && recRef.current.stop();
-      setListening(false);
-    }
     const mine = { role: "me", text, hidden };
     const msgs = buildMsgs(mine);
     push("me", text, hidden);
     setDraft("");
-    baseRef.current = "";
     setBusy(true);
     try {
       const conceptHeader = lang === "zh" ? "\n\n# 使用者今天要解釋的概念\n" : "\n\n# Concept the user is explaining today\n";
@@ -925,7 +926,7 @@ export default function FeynmanRoom() {
                 <button
                   className="fr-btn"
                   onClick={toggleMic}
-                  disabled={busy}
+                  disabled={busy || transcribing}
                   style={{
                     width: 57,
                     height: 57,
@@ -936,6 +937,7 @@ export default function FeynmanRoom() {
                     background: listening ? C.red : C.fill,
                     color: listening ? "#fff" : C.muted,
                     fontSize: 23,
+                    opacity: transcribing ? 0.5 : 1,
                   }}
                   title={listening ? "Stop" : "Start speaking"}
                 >
@@ -945,15 +947,21 @@ export default function FeynmanRoom() {
               <textarea
                 className="fr-in"
                 value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  baseRef.current = e.target.value;
-                }}
+                onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
                 }}
                 rows={mode === "voice" ? 2 : 1}
-                placeholder={listening ? t.listeningPlaceholder : turns.length === 0 ? t.explainPlaceholder : t.keepGoingPlaceholder}
+                disabled={transcribing}
+                placeholder={
+                  listening
+                    ? t.listeningPlaceholder
+                    : transcribing
+                    ? t.transcribingPlaceholder
+                    : turns.length === 0
+                    ? t.explainPlaceholder
+                    : t.keepGoingPlaceholder
+                }
                 style={{
                   flex: 1,
                   resize: "none",

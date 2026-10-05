@@ -6,7 +6,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "20mb" }));
 
 const API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
@@ -52,6 +52,61 @@ app.post("/api/llm", async (req, res) => {
 
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("\n");
     res.json({ content: [{ type: "text", text }] });
+  } catch (err) {
+    res.status(502).json({ error: "Could not reach Gemini API: " + err.message });
+  }
+});
+
+// Record-then-transcribe voice input — works in Safari too, unlike the browser's
+// SpeechRecognition API (which Safari never implemented).
+app.post("/api/transcribe", async (req, res) => {
+  if (!API_KEY) {
+    return res.status(500).json({
+      error: "GEMINI_API_KEY is not set. Add it to feynman-room/.env (see .env.example).",
+    });
+  }
+
+  const { audioBase64, mimeType, languageHint } = req.body;
+  if (!audioBase64 || !mimeType) {
+    return res.status(400).json({ error: "audioBase64 and mimeType are required." });
+  }
+
+  const geminiBody = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { inline_data: { mime_type: mimeType, data: audioBase64 } },
+          {
+            text:
+              "Transcribe this audio recording exactly as spoken. The speaker is speaking in " +
+              (languageHint || "English") +
+              ". Output only the raw transcription text with natural punctuation — no preamble, no translation, no explanation.",
+          },
+        ],
+      },
+    ],
+    generationConfig: { maxOutputTokens: 1000 },
+  };
+
+  try {
+    const upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiBody),
+      }
+    );
+
+    const data = await upstream.json();
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: data.error?.message || "Gemini transcription failed" });
+    }
+
+    const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("\n").trim();
+    res.json({ text });
   } catch (err) {
     res.status(502).json({ error: "Could not reach Gemini API: " + err.message });
   }
