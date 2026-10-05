@@ -157,7 +157,8 @@ const VOICE_LANG_CODES = { cantonese: "yue-HK", mandarin: "zh-TW" };
 
 /* ─── api ─────────────────────────────────────────────── */
 async function callClaude(system, messages, maxTokens = 1000) {
-  const res = await fetch("http://localhost:3001/api/llm", {
+  const url = import.meta.env.DEV ? "http://localhost:3001/api/llm" : "/api/llm";
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
