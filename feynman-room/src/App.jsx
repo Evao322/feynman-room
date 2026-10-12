@@ -206,6 +206,11 @@ const VOICE_LANG_LABEL = {
   zh: { mandarin: "Mandarin Chinese", cantonese: "Cantonese" },
 };
 
+const COMPLETION_PHRASE = {
+  en: "I think I understand this now.",
+  zh: "我想我現在明白這個內容了。",
+};
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -692,6 +697,23 @@ export default function FeynmanRoom() {
     send(prompts.RESTATE_CMD, true);
   };
 
+  // Ah Dai's fixed completion phrase (see prompts.js) auto-triggers the outsider-test
+  // restate, same as pressing "Ask Ah Dai to repeat back" manually.
+  useEffect(() => {
+    const last = turns[turns.length - 1];
+    if (
+      last &&
+      last.role === "doi" &&
+      !last.hidden &&
+      last.text.trim() === COMPLETION_PHRASE[lang] &&
+      phase !== "restate" &&
+      phase !== "done"
+    ) {
+      doRestate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns]);
+
   const runCheck = async () => {
     if (!material.trim() || busy) return;
     setErr("");
@@ -737,6 +759,17 @@ export default function FeynmanRoom() {
     setTurns((p) => p.map((t) => (t.id === id ? { ...t, color: t.color === color ? null : color } : t)));
   const toggleFlag = (id) =>
     setTurns((p) => p.map((t) => (t.id === id ? { ...t, flagged: !t.flagged } : t)));
+
+  // For a "I'm stuck" turn, finds the Ah Dai question that immediately preceded it,
+  // so the Mark screen (which otherwise only shows the student's own turns) can still
+  // show what the student actually got stuck on.
+  const stuckContextFor = (turn) => {
+    const idx = turns.findIndex((tn) => tn.id === turn.id);
+    for (let i = idx - 1; i >= 0; i--) {
+      if (turns[i].role === "doi") return turns[i].text;
+    }
+    return null;
+  };
 
   const counts = {
     green: myTurns.filter((t) => t.color === "green").length,
@@ -1501,6 +1534,21 @@ export default function FeynmanRoom() {
                   (turn.color === "green" ? C.green : turn.color === "amber" ? C.amber : turn.color === "red" ? C.red : "transparent"),
               }}
             >
+              {turn.text === t.imStuck && stuckContextFor(turn) && (
+                <p
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: 12,
+                    color: C.doi,
+                    background: C.doiBg,
+                    borderRadius: 8,
+                    padding: "6px 10px",
+                    margin: "0 0 8px",
+                  }}
+                >
+                  {stuckContextFor(turn)}
+                </p>
+              )}
               <p style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 1.6, margin: "0 0 12px", whiteSpace: "pre-wrap" }}>{turn.text}</p>
               <div style={{ display: "flex", gap: 6 }}>
                 {[
