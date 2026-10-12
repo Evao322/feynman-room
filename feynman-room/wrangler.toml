@@ -1,3 +1,9 @@
 name = "feynman-room"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "feynman-room-db"
+database_id = "ac959cc5-8176-4ad2-886f-ef5f13f0d535"

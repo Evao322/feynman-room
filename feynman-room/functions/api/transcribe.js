@@ -1,6 +1,11 @@
 // Record-then-transcribe voice input via Gemini — works in Safari too, unlike the
 // browser's SpeechRecognition API (which Safari never implemented).
+import { getUser } from "../_lib/auth.js";
+
 export async function onRequestPost({ request, env }) {
+  const user = await getUser(request, env.DB);
+  if (!user) return Response.json({ error: "Not logged in." }, { status: 401 });
+
   const API_KEY = env.GEMINI_API_KEY;
   const MODEL = env.GEMINI_MODEL || "gemini-flash-lite-latest";
 

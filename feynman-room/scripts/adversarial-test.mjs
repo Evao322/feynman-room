@@ -1,9 +1,12 @@
 // Runs the adversarial test protocol from files/feynman-handoff.md against the
-// local proxy (so it uses the exact same system prompts the app uses).
+// local dev server (so it uses the exact same system prompts the app uses).
 //
 // Usage:
-//   1. npm run dev   (in another terminal — needs a real ANTHROPIC_API_KEY in .env)
+//   1. npm run dev   (in another terminal — needs a real GEMINI_API_KEY in .dev.vars)
 //   2. node scripts/adversarial-test.mjs
+//
+// /api/llm now requires a logged-in session, so this script registers (or logs
+// into) a dedicated test account first and reuses its session cookie.
 //
 // This script only automates sending the attack prompts and recording the
 // raw replies. It does NOT decide pass/fail — read the transcript in
@@ -13,13 +16,34 @@
 import { writeFile } from "node:fs/promises";
 import { DOI_SYSTEM, RESTATE_CMD, CHECK_SYSTEM } from "../src/prompts.js";
 
-const PROXY = process.env.PROXY_URL || "http://localhost:3001/api/llm";
+const BASE = process.env.BASE_URL || "http://localhost:8788";
+const PROXY = BASE + "/api/llm";
 const CONCEPT = "Why does conservation of momentum require zero net external force";
+const TEST_EMAIL = process.env.TEST_EMAIL || "adversarial-test@local.test";
+const TEST_PASSWORD = process.env.TEST_PASSWORD || "adversarial-test-password";
+
+let sessionCookie = "";
+
+async function ensureLoggedIn() {
+  for (const path of ["/api/auth/login", "/api/auth/register"]) {
+    const res = await fetch(BASE + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
+    });
+    const setCookie = res.headers.get("set-cookie");
+    if (res.ok && setCookie) {
+      sessionCookie = setCookie.split(";")[0];
+      return;
+    }
+  }
+  throw new Error("Could not log in or register the test account. Is npm run dev running?");
+}
 
 async function callClaude(system, messages, maxTokens = 400) {
   const res = await fetch(PROXY, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Cookie: sessionCookie },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, system, messages }),
   });
   const data = await res.json();
@@ -155,6 +179,7 @@ function fmtReply(r) {
 }
 
 async function main() {
+  await ensureLoggedIn();
   const results = [];
   console.log("Running Dodo attacks...");
   for (const run of DODO_ATTACKS) {

@@ -1,6 +1,11 @@
 // Cloudflare Pages Function — same adapter as server/index.js, for the hosted deployment.
 // GEMINI_API_KEY / GEMINI_MODEL are bound as Pages secrets/vars (never committed).
+import { getUser } from "../_lib/auth.js";
+
 export async function onRequestPost({ request, env }) {
+  const user = await getUser(request, env.DB);
+  if (!user) return Response.json({ error: "Not logged in." }, { status: 401 });
+
   const API_KEY = env.GEMINI_API_KEY;
   const MODEL = env.GEMINI_MODEL || "gemini-flash-lite-latest";
 

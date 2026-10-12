@@ -93,6 +93,25 @@ const STRINGS = {
     connectionFailedSuffix: " — please try sending again.",
     connectionFailedSuffix2: " — please try again.",
     copyFailed: "Copy failed — please select manually from the text box below.",
+    authWelcome: "Feynman Room",
+    authSubtitle: "Sign in to keep your own learning history.",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    passwordHint: "At least 8 characters",
+    logIn: "Log In",
+    signUp: "Sign Up",
+    needAccount: "Need an account? Sign up",
+    haveAccount: "Already have an account? Log in",
+    authBusyText: "Please wait…",
+    logout: "Log out",
+    history: "History",
+    historyTitle: "Your sessions",
+    historyEmpty: "No saved sessions yet.",
+    historyBack: "Back to list",
+    stuckPointsLabel: "Stuck points in this session",
+    pdfUploadLabel: "Or upload a PDF",
+    pdfParsing: "Reading PDF…",
+    historicalUsedNote: (n) => `Also checked ${n} of your past session${n > 1 ? "s" : ""} as reference.`,
   },
   zh: {
     appName: "費曼房間",
@@ -160,6 +179,25 @@ const STRINGS = {
     connectionFailedSuffix: " — 請再試一次。",
     connectionFailedSuffix2: " — 請再試一次。",
     copyFailed: "複製失敗 — 請在下方文字框手動選取。",
+    authWelcome: "費曼房間",
+    authSubtitle: "登入以保存你自己的學習記錄。",
+    emailLabel: "電子郵件",
+    passwordLabel: "密碼",
+    passwordHint: "至少 8 個字元",
+    logIn: "登入",
+    signUp: "註冊",
+    needAccount: "還沒有帳號？註冊",
+    haveAccount: "已經有帳號？登入",
+    authBusyText: "請稍候…",
+    logout: "登出",
+    history: "歷史記錄",
+    historyTitle: "你的學習記錄",
+    historyEmpty: "目前還沒有儲存的記錄。",
+    historyBack: "返回列表",
+    stuckPointsLabel: "這次對話中卡住的地方",
+    pdfUploadLabel: "或上傳 PDF",
+    pdfParsing: "正在讀取 PDF…",
+    historicalUsedNote: (n) => `也參考了你過去 ${n} 份學習記錄。`,
   },
 };
 
@@ -178,8 +216,7 @@ function blobToBase64(blob) {
 }
 
 async function transcribeAudio(base64, mimeType, languageHint) {
-  const url = import.meta.env.DEV ? "http://localhost:3001/api/transcribe" : "/api/transcribe";
-  const res = await fetch(url, {
+  const res = await fetch("/api/transcribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ audioBase64: base64, mimeType, languageHint }),
@@ -189,10 +226,24 @@ async function transcribeAudio(base64, mimeType, languageHint) {
   return data.text;
 }
 
+async function extractPdfText(file) {
+  const pdfjsLib = await import("pdfjs-dist");
+  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.mjs?url")).default;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = "";
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map((it) => it.str).join(" ") + "\n\n";
+  }
+  return text.trim();
+}
+
 /* ─── api ─────────────────────────────────────────────── */
 async function callClaude(system, messages, maxTokens = 1000) {
-  const url = import.meta.env.DEV ? "http://localhost:3001/api/llm" : "/api/llm";
-  const res = await fetch(url, {
+  const res = await fetch("/api/llm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -215,6 +266,18 @@ async function callClaude(system, messages, maxTokens = 1000) {
     .map((b) => b.text)
     .join("\n")
     .trim();
+}
+
+async function callCheck({ system, material, concept, script, lang, excludeSessionId }) {
+  const res = await fetch("/api/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ system, material, concept, script, lang, excludeSessionId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data.error || "Connection failed (" + res.status + ")"));
+  const text = data.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  return { text, historicalSessionsUsed: data.historicalSessionsUsed || 0 };
 }
 
 /* ─── small pieces ────────────────────────────────────── */
@@ -344,8 +407,44 @@ function Sheet({ open, onClose, title, children }) {
   );
 }
 
+function AccountLinks({ t, onHistory, onLogout }) {
+  return (
+    <div style={{ display: "flex", gap: 14, justifyContent: "flex-end", padding: "10px 20px 0" }}>
+      <button
+        className="fr-btn"
+        onClick={onHistory}
+        style={{ background: "none", border: "none", color: C.muted, fontFamily: SANS, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0 }}
+      >
+        {t.history}
+      </button>
+      <button
+        className="fr-btn"
+        onClick={onLogout}
+        style={{ background: "none", border: "none", color: C.muted, fontFamily: SANS, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0 }}
+      >
+        {t.logout}
+      </button>
+    </div>
+  );
+}
+
 /* ─── main ────────────────────────────────────────────── */
 export default function FeynmanRoom() {
+  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [authMode, setAuthMode] = useState("login"); // login | register
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  const [sessionId, setSessionId] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyDetail, setHistoryDetail] = useState(null);
+  const [historyStuckPoints, setHistoryStuckPoints] = useState([]);
+
   const [stage, setStage] = useState("setup"); // setup | talk | mark | check
   const [concept, setConcept] = useState("");
   const [phase, setPhase] = useState("monologue"); // monologue | dialogue | restate | done
@@ -358,6 +457,8 @@ export default function FeynmanRoom() {
   const [voiceOK, setVoiceOK] = useState(true);
   const [material, setMaterial] = useState("");
   const [report, setReport] = useState("");
+  const [historicalUsed, setHistoricalUsed] = useState(0);
+  const [pdfParsing, setPdfParsing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [lang, setLang] = useState("en"); // en | zh
@@ -375,11 +476,107 @@ export default function FeynmanRoom() {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
+  const saveTimerRef = useRef(null);
 
   const myTurns = turns.filter((t) => t.role === "me" && !t.hidden);
   const myCount = myTurns.length;
 
   const languageHint = lang === "zh" ? VOICE_LANG_LABEL.zh[voiceLang] : VOICE_LANG_LABEL.en._;
+
+  /* auth bootstrap — checks the httpOnly session cookie via /api/auth/me */
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => setUser(data.user || null))
+      .catch(() => setUser(null))
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  const resetAppState = () => {
+    setStage("setup");
+    setConcept("");
+    setPhase("monologue");
+    setTurns([]);
+    setDraft("");
+    setMaterial("");
+    setReport("");
+    setHistoricalUsed(0);
+    setSessionId(null);
+  };
+
+  const submitAuth = async () => {
+    if (!authEmail.trim() || !authPassword) return;
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const res = await fetch("/api/auth/" + (authMode === "login" ? "login" : "register"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail.trim(), password: authPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      setUser({ id: data.id, email: data.email });
+      setAuthPassword("");
+    } catch (e) {
+      setAuthError(e.message);
+    }
+    setAuthBusy(false);
+  };
+
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {}
+    setUser(null);
+    resetAppState();
+  };
+
+  /* debounced auto-save of the current session (feature: full conversation history) */
+  const saveSession = useCallback(async () => {
+    if (!user || turns.length === 0) return;
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sessionId, concept, lang, grade, transcript: turns, material, checkerReport: report }),
+      });
+      const data = await res.json();
+      if (data.id && !sessionId) setSessionId(data.id);
+    } catch (e) {}
+  }, [user, sessionId, concept, lang, grade, turns, material, report]);
+
+  useEffect(() => {
+    if (!user || turns.length === 0) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => saveSession(), 1200);
+    return () => clearTimeout(saveTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, material, report]);
+
+  const openHistory = async () => {
+    setShowHistory(true);
+    setHistoryDetail(null);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/sessions");
+      const data = await res.json();
+      setHistoryList(data.sessions || []);
+    } catch (e) {}
+    setHistoryLoading(false);
+  };
+
+  const openHistoryDetail = async (id) => {
+    setHistoryLoading(true);
+    try {
+      const [sessRes, stuckRes] = await Promise.all([fetch("/api/sessions/" + id), fetch("/api/stuck-points")]);
+      const sess = await sessRes.json();
+      const stuck = await stuckRes.json();
+      setHistoryDetail(sess);
+      setHistoryStuckPoints((stuck.stuckPoints || []).filter((p) => p.session_id === id));
+    } catch (e) {}
+    setHistoryLoading(false);
+  };
 
   /* mic support check — MediaRecorder works in both Chrome and Safari (14.1+), unlike SpeechRecognition */
   useEffect(() => {
@@ -459,6 +656,17 @@ export default function FeynmanRoom() {
     const text = (textOverride ?? draft).trim();
     if (!text || busy) return;
     setErr("");
+
+    // Feature: automatically record the Ah Dai question that caused a "stuck" moment.
+    if (text === t.imStuck) {
+      const lastDoi = [...turns].reverse().find((tn) => tn.role === "doi");
+      fetch("/api/stuck-points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, concept, triggerQuestion: lastDoi ? lastDoi.text : "" }),
+      }).catch(() => {});
+    }
+
     const mine = { role: "me", text, hidden };
     const msgs = buildMsgs(mine);
     push("me", text, hidden);
@@ -489,29 +697,40 @@ export default function FeynmanRoom() {
     setErr("");
     setBusy(true);
     setReport("");
+    setHistoricalUsed(0);
     const script = myTurns.map((t, i) => (i + 1) + ". " + t.text).join("\n");
     try {
-      const materialHeader = lang === "zh" ? "[課程教材]\n" : "[COURSE MATERIAL]\n";
-      const transcriptHeader = lang === "zh" ? "\n\n[口頭解釋逐字稿]\n概念：" : "\n\n[MY SPOKEN EXPLANATION TRANSCRIPT]\nConcept: ";
       const gradeHeader =
         lang === "zh"
           ? "\n\n# 使用者的年級\n" + gradeLabel + "\n你的判斷標準不變，但描述差異或缺漏時，用詞難度請符合這個年級。"
           : "\n\n# The user's grade level\n" + gradeLabel + "\nYour comparison criteria stay the same, but use vocabulary appropriate for this grade level when describing differences or omissions.";
-      const out = await callClaude(
-        prompts.CHECK_SYSTEM + gradeHeader,
-        [
-          {
-            role: "user",
-            content: materialHeader + material.trim() + transcriptHeader + concept + "\n" + script,
-          },
-        ],
-        1000
-      );
-      setReport(out);
+      const { text, historicalSessionsUsed } = await callCheck({
+        system: prompts.CHECK_SYSTEM + gradeHeader,
+        material: material.trim(),
+        concept,
+        script,
+        lang,
+        excludeSessionId: sessionId,
+      });
+      setReport(text);
+      setHistoricalUsed(historicalSessionsUsed);
     } catch (e) {
       setErr(e.message + t.connectionFailedSuffix2);
     }
     setBusy(false);
+  };
+
+  const handlePdfUpload = async (file) => {
+    if (!file) return;
+    setErr("");
+    setPdfParsing(true);
+    try {
+      const text = await extractPdfText(file);
+      setMaterial((m) => (m ? m + "\n\n" : "") + text);
+    } catch (e) {
+      setErr("Could not read that PDF: " + e.message);
+    }
+    setPdfParsing(false);
   };
 
   const setColor = (id, color) =>
@@ -620,8 +839,99 @@ export default function FeynmanRoom() {
     </Sheet>
   );
 
-  /* ── setup ── */
-  if (stage === "setup") {
+  const HistorySheet = (
+    <Sheet
+      open={showHistory}
+      onClose={() => setShowHistory(false)}
+      title={historyDetail ? historyDetail.concept || t.historyTitle : t.historyTitle}
+    >
+      {historyLoading && <p style={{ color: C.faint, fontFamily: SANS, fontSize: 14 }}>…</p>}
+
+      {!historyLoading && !historyDetail && (
+        <>
+          {historyList.length === 0 && <p style={{ color: C.faint, fontFamily: SANS, fontSize: 14 }}>{t.historyEmpty}</p>}
+          {historyList.map((s) => (
+            <button
+              key={s.id}
+              className="fr-btn"
+              onClick={() => openHistoryDetail(s.id)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: C.card,
+                border: "none",
+                borderRadius: 12,
+                padding: "12px 14px",
+                marginBottom: 8,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontFamily: SERIF, fontSize: 16, color: C.ink }}>{s.concept || "—"}</div>
+              <div style={{ fontFamily: MONO, fontSize: 11, color: C.faint, marginTop: 4 }}>
+                {new Date(s.updated_at).toLocaleString()} · {s.lang === "zh" ? "繁體中文" : "English"}
+              </div>
+            </button>
+          ))}
+        </>
+      )}
+
+      {!historyLoading && historyDetail && (
+        <>
+          <button
+            className="fr-btn"
+            onClick={() => setHistoryDetail(null)}
+            style={{ background: "none", border: "none", color: C.muted, fontFamily: SANS, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0, marginBottom: 14 }}
+          >
+            ← {t.historyBack}
+          </button>
+
+          {historyStuckPoints.length > 0 && (
+            <div style={{ background: C.redBg, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+              <Eyebrow color={C.red}>{t.stuckPointsLabel}</Eyebrow>
+              {historyStuckPoints.map((p) => (
+                <p key={p.id} style={{ fontFamily: SANS, fontSize: 13, color: C.ink, margin: "8px 0 0" }}>
+                  {p.trigger_question}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {historyDetail.transcript.filter((tn) => !tn.hidden).map((tn, i) => (
+            <p
+              key={i}
+              style={{
+                fontFamily: tn.role === "me" ? SERIF : MONO,
+                fontSize: tn.role === "me" ? 15 : 13,
+                color: tn.role === "me" ? C.ink : C.doi,
+                lineHeight: 1.6,
+                margin: "0 0 10px",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {tn.text}
+            </p>
+          ))}
+
+          {historyDetail.checkerReport && (
+            <div style={{ marginTop: 16, background: C.card, borderRadius: 12, padding: 14 }}>
+              <Eyebrow>{t.checkResults}</Eyebrow>
+              <p style={{ fontFamily: SANS, fontSize: 13.5, color: C.ink, whiteSpace: "pre-wrap", marginTop: 8 }}>
+                {historyDetail.checkerReport}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </Sheet>
+  );
+
+  /* ── auth gate ── */
+  if (authLoading) {
+    return <div style={{ background: C.paper, minHeight: "100vh" }} />;
+  }
+
+  if (!user) {
     return (
       <div
         style={{
@@ -636,6 +946,74 @@ export default function FeynmanRoom() {
         }}
       >
         <style>{css}</style>
+        <div style={{ maxWidth: 380, width: "100%" }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <h1 style={{ fontFamily: SERIF, fontSize: 32, fontWeight: 400, margin: 0, letterSpacing: "-0.01em" }}>{t.authWelcome}</h1>
+            <p style={{ fontFamily: SERIF, fontSize: 15, color: C.muted, margin: "6px 0 0" }}>{t.authSubtitle}</p>
+          </div>
+
+          <div style={{ background: C.card, borderRadius: 18, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
+            <Eyebrow>{t.emailLabel}</Eyebrow>
+            <input
+              className="fr-in"
+              type="email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              style={{ width: "100%", marginTop: 8, padding: "12px 14px", fontFamily: SANS, fontSize: 15, background: C.fill, border: "none", borderRadius: 12, color: C.ink }}
+            />
+            <div style={{ marginTop: 14 }}>
+              <Eyebrow>{t.passwordLabel}</Eyebrow>
+              <input
+                className="fr-in"
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitAuth()}
+                style={{ width: "100%", marginTop: 8, padding: "12px 14px", fontFamily: SANS, fontSize: 15, background: C.fill, border: "none", borderRadius: 12, color: C.ink }}
+              />
+              {authMode === "register" && <p style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>{t.passwordHint}</p>}
+            </div>
+          </div>
+
+          {authError && <p style={{ color: C.red, fontSize: 13, marginTop: 12 }}>{authError}</p>}
+
+          <div style={{ marginTop: 16 }}>
+            <Btn full onClick={submitAuth} disabled={authBusy || !authEmail.trim() || !authPassword}>
+              {authBusy ? t.authBusyText : authMode === "login" ? t.logIn : t.signUp}
+            </Btn>
+          </div>
+
+          <button
+            className="fr-btn"
+            onClick={() => {
+              setAuthMode((m) => (m === "login" ? "register" : "login"));
+              setAuthError("");
+            }}
+            style={{ display: "block", width: "100%", marginTop: 16, background: "none", border: "none", color: C.muted, fontFamily: SANS, fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "center" }}
+          >
+            {authMode === "login" ? t.needAccount : t.haveAccount}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── setup ── */
+  if (stage === "setup") {
+    return (
+      <div
+        style={{
+          background: C.paper,
+          minHeight: "100vh",
+          fontFamily: SANS,
+          color: C.ink,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <style>{css}</style>
+        <AccountLinks t={t} onHistory={openHistory} onLogout={logout} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}>
         <div style={{ maxWidth: 400, width: "100%" }}>
           <div style={{ textAlign: "center", marginBottom: 28 }}>
             <h1 style={{ fontFamily: SERIF, fontSize: 32, fontWeight: 400, margin: 0, letterSpacing: "-0.01em" }}>{t.appName}</h1>
@@ -795,7 +1173,9 @@ export default function FeynmanRoom() {
             {t.howThisWorks}
           </button>
         </div>
+        </div>
         {GuideSheet}
+        {HistorySheet}
       </div>
     );
   }
@@ -849,6 +1229,8 @@ export default function FeynmanRoom() {
           />
         </div>
       </div>
+      <AccountLinks t={t} onHistory={openHistory} onLogout={logout} />
+      <div style={{ height: 6 }} />
     </div>
   );
 
@@ -1061,7 +1443,7 @@ export default function FeynmanRoom() {
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <Btn tone="ghost" small onClick={() => send("I'm stuck")} disabled={busy || turns.length === 0}>
+              <Btn tone="ghost" small onClick={() => send(t.imStuck)} disabled={busy || turns.length === 0}>
                 {t.imStuck}
               </Btn>
               <Btn tone="ghost" small onClick={doRestate} disabled={busy || myCount < 3 || phase === "restate"}>
@@ -1077,6 +1459,7 @@ export default function FeynmanRoom() {
             </div>
           </div>
         </div>
+        {HistorySheet}
       </div>
     );
   }
@@ -1162,6 +1545,7 @@ export default function FeynmanRoom() {
             </Btn>
           </div>
         </div>
+        {HistorySheet}
       </div>
     );
   }
@@ -1196,6 +1580,33 @@ export default function FeynmanRoom() {
               resize: "vertical",
             }}
           />
+          <div style={{ marginTop: 10 }}>
+            <label
+              className="fr-btn"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontFamily: SANS,
+                fontSize: 13,
+                fontWeight: 600,
+                color: C.muted,
+                background: C.fill,
+                borderRadius: 980,
+                padding: "7px 14px",
+                cursor: "pointer",
+              }}
+            >
+              {pdfParsing ? t.pdfParsing : t.pdfUploadLabel}
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => handlePdfUpload(e.target.files[0])}
+                disabled={pdfParsing}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
           <div style={{ marginTop: 12 }}>
             <Btn onClick={runCheck} disabled={busy || !material.trim() || myCount === 0} full>
               {busy ? t.checking : t.runCheck}
@@ -1214,6 +1625,9 @@ export default function FeynmanRoom() {
             <div style={{ fontFamily: SANS, fontSize: 14.5, lineHeight: 1.75, whiteSpace: "pre-wrap", marginTop: 10, color: C.ink }}>
               {report}
             </div>
+            {historicalUsed > 0 && (
+              <p style={{ fontFamily: SANS, fontSize: 12, color: C.faint, marginTop: 12 }}>{t.historicalUsedNote(historicalUsed)}</p>
+            )}
           </div>
         )}
 
@@ -1251,6 +1665,7 @@ export default function FeynmanRoom() {
           </div>
         </div>
       </div>
+      {HistorySheet}
     </div>
   );
 }

@@ -4,24 +4,24 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev:client": "vite",
-    "dev:server": "node server/index.js",
-    "dev": "concurrently -n client,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
+    "dev:build-watch": "vite build --watch",
+    "dev:serve": "wrangler pages dev dist --port 8788",
+    "dev": "concurrently -n build,serve -c cyan,magenta \"npm:dev:build-watch\" \"npm:dev:serve\"",
     "build": "vite build",
     "preview": "vite preview",
     "test:adversarial": "node scripts/adversarial-test.mjs",
-    "deploy": "vite build && wrangler pages deploy dist --project-name=feynman-room"
+    "deploy": "vite build && wrangler pages deploy dist --project-name=feynman-room",
+    "db:migrate:local": "wrangler d1 migrations apply feynman-room-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply feynman-room-db --remote"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "pdfjs-dist": "^6.4.299",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
-    "concurrently": "^8.2.2",
+    "concurrently": "^10.0.6",
     "vite": "^5.4.1",
     "wrangler": "^4.147.0"
   }
