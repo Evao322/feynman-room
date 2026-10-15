@@ -28,6 +28,7 @@ feynman-room/                the actual working app — Vite/React frontend + Cl
   functions/api/llm.js       Ah Dai chat — Anthropic-shaped request in, Gemini generateContent call out
   functions/api/check.js     Checker — same adapter, plus pulls the student's past session material for the historical-fallback rule
   functions/api/transcribe.js  record-then-transcribe voice input via Gemini (works in Safari, unlike SpeechRecognition)
+  functions/api/generate-image.js  concept-summary diagram via Cloudflare Workers AI (flux-1-schnell) — not Gemini
   .dev.vars                  GEMINI_API_KEY / GEMINI_MODEL for local `wrangler pages dev` (gitignored, never commit)
 ```
 
@@ -71,6 +72,10 @@ There is no unit test suite or linter configured. `test:adversarial` is a script
 
 **History view is read-only by design.** `HistorySheet` in `App.jsx` lists then displays a past `explanation_sessions` row (plus any `stuck_points` rows whose `session_id` matches) — it does not support resuming/editing a past session. If you're asked to add "continue a past session", that's new scope, not a bug.
 
-**Single-component UI.** `App.jsx` has no router. The stage machine (`setup`, `talk`, `mark`, `check`) is plain `if` branches inside one function component, gated by `useState("setup")`; the auth gate (`authLoading` / `!user`) and the History `Sheet` sit outside/around that stage machine rather than being stages themselves.
+**Marking is inline, not a separate stage.** There used to be a standalone `mark` stage; it was merged into `talk` so three-colour marking happens directly next to each of the student's own bubbles via `MarkDots` (a `.fr-turn-row` flex container that's `row` on desktop — buttons beside the bubble — and `column` below `max-width:600px` — buttons stacked under the bubble, per the CSS in the `css` template string). Don't recreate a separate Mark screen/stage.
+
+**Single-component UI.** `App.jsx` has no router. The stage machine (`setup`, `talk`, `check`) is plain `if` branches inside one function component, gated by `useState("setup")`; the auth gate (`authLoading` / `!user`) and the History `Sheet` sit outside/around that stage machine rather than being stages themselves.
+
+**Summary image uses Workers AI, not Gemini.** `functions/api/generate-image.js` calls `env.AI.run("@cf/black-forest-labs/flux-1-schnell", ...)` — Cloudflare's own free-tier inference, bound via `[ai] binding = "AI"` in `wrangler.toml`, not a Gemini key. It auto-fires once per session from a `useEffect` in `App.jsx` when the outsider-test restate reply lands (`phase === "restate"` plus a new non-hidden `doi` turn; the effect then flips `phase` to `"done"` so it only fires once). The prompt explicitly forbids any text/labels in the image, because diffusion models render text unreliably (worse for non-Latin scripts) regardless of UI language. The model's safety classifier has a real false-positive rate on completely benign prompts (observed in testing) — that's why there's a manual Retry button next to `imageError`, not just a dead-end failure. The image is never persisted to D1 (avoids bloating session rows with base64 blobs) — it's session-only; a "Download image" link lets the student save it themselves.
 
 **Git on Windows / this environment.** The repo filesystem is flagged by Git as having "dubious ownership" (common for network/mounted drives on Windows) — git commands in this environment need `-c safe.directory=<repo path>` or they'll fail outright. Likewise, the system's Git Credential Manager can hang waiting for a GUI prompt on `push`; use `gh`'s credential helper explicitly (`-c credential.helper= -c credential.helper="!gh auth git-credential"`) to avoid it.

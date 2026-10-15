@@ -114,6 +114,10 @@ const STRINGS = {
     pdfUploadLabel: "Or upload a PDF",
     pdfParsing: "Reading PDF…",
     historicalUsedNote: (n) => `Also checked ${n} of your past session${n > 1 ? "s" : ""} as reference.`,
+    summaryImageGenerating: "Sketching a summary diagram…",
+    summaryImageTitle: "Summary diagram",
+    summaryImageDownload: "Download image",
+    retry: "Retry",
   },
   zh: {
     appName: "費曼房間",
@@ -202,6 +206,10 @@ const STRINGS = {
     pdfUploadLabel: "或上傳 PDF",
     pdfParsing: "正在讀取 PDF…",
     historicalUsedNote: (n) => `也參考了你過去 ${n} 份學習記錄。`,
+    summaryImageGenerating: "正在畫一張總結示意圖…",
+    summaryImageTitle: "總結示意圖",
+    summaryImageDownload: "下載圖片",
+    retry: "重試",
   },
 };
 
@@ -507,6 +515,10 @@ export default function FeynmanRoom() {
   const [subject, setSubject] = useState("physics");
 
   const [transcribing, setTranscribing] = useState(false);
+  const [summaryImage, setSummaryImage] = useState(null);
+  const [imageGenerating, setImageGenerating] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [lastSummaryText, setLastSummaryText] = useState("");
 
   const t = STRINGS[lang];
   const prompts = PROMPTS[lang];
@@ -553,6 +565,8 @@ export default function FeynmanRoom() {
     setReport("");
     setHistoricalUsed(0);
     setSessionId(null);
+    setSummaryImage(null);
+    setImageError("");
   };
 
   const submitAuth = async () => {
@@ -762,6 +776,37 @@ export default function FeynmanRoom() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turns]);
+
+  const generateSummaryImage = async (summaryText) => {
+    setImageError("");
+    setImageGenerating(true);
+    setLastSummaryText(summaryText);
+    try {
+      const res = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concept, summary: summaryText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Image generation failed (" + res.status + ")");
+      setSummaryImage(data.image);
+    } catch (e) {
+      setImageError(e.message);
+    }
+    setImageGenerating(false);
+  };
+
+  // Once the outsider-test restate reply lands, also generate a label-free summary
+  // diagram from it — runs once per session (guarded by phase flipping to "done").
+  useEffect(() => {
+    if (phase !== "restate") return;
+    const last = turns[turns.length - 1];
+    if (last && last.role === "doi" && !last.hidden) {
+      setPhase("done");
+      generateSummaryImage(last.text);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turns, phase]);
 
   const runCheck = async () => {
     if (!material.trim() || busy) return;
@@ -1493,6 +1538,72 @@ export default function FeynmanRoom() {
                 >
                   {t.dodoThinking}
                 </div>
+              </div>
+            )}
+
+            {imageGenerating && (
+              <div style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
+                <span className="fr-live" style={{ fontFamily: MONO, fontSize: 12, color: C.faint }}>
+                  {t.summaryImageGenerating}
+                </span>
+              </div>
+            )}
+
+            {summaryImage && (
+              <div
+                className="fr-rise"
+                style={{
+                  background: C.card,
+                  borderRadius: 16,
+                  padding: 14,
+                  margin: "14px 0",
+                  boxShadow: "0 1px 3px rgba(0,0,0,.06)",
+                }}
+              >
+                <Eyebrow>{t.summaryImageTitle}</Eyebrow>
+                <img
+                  src={"data:image/jpeg;base64," + summaryImage}
+                  alt={t.summaryImageTitle}
+                  style={{ width: "100%", borderRadius: 12, marginTop: 10, display: "block" }}
+                />
+                <a
+                  href={"data:image/jpeg;base64," + summaryImage}
+                  download={"feynman-room-summary.jpg"}
+                  style={{
+                    display: "inline-block",
+                    marginTop: 10,
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: C.doi,
+                  }}
+                >
+                  {t.summaryImageDownload}
+                </a>
+              </div>
+            )}
+
+            {imageError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0" }}>
+                <p style={{ color: C.red, fontSize: 12.5, margin: 0 }}>{imageError}</p>
+                <button
+                  className="fr-btn"
+                  onClick={() => generateSummaryImage(lastSummaryText)}
+                  style={{
+                    background: C.fill,
+                    border: "none",
+                    borderRadius: 980,
+                    padding: "4px 12px",
+                    fontFamily: SANS,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: C.ink,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  {t.retry}
+                </button>
               </div>
             )}
           </div>

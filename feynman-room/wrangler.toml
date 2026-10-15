@@ -7,3 +7,6 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "feynman-room-db"
 database_id = "ac959cc5-8176-4ad2-886f-ef5f13f0d535"
+
+[ai]
+binding = "AI"
