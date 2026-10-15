@@ -32,6 +32,14 @@ const STRINGS = {
     tagline: "A listener who never teaches.",
     conceptLabel: "Concept for today",
     conceptPlaceholder: "e.g. conservation of momentum",
+    subjectLabel: "Subject",
+    subjectPhysics: "Physics",
+    subjectChemistry: "Chemistry",
+    subjectMath: "Math",
+    subjectBiology: "Biology",
+    subjectHistory: "History",
+    subjectLanguage: "Language Arts",
+    subjectOther: "Other",
     inputModeLabel: "Input mode",
     typing: "Typing",
     voice: "Voice",
@@ -57,7 +65,6 @@ const STRINGS = {
       ["Checker", "Paste in your course material. The Checker only verifies whether you're consistent with it — not whether you're correct."],
     ],
     tabTalk: "Talk",
-    tabMark: "Mark",
     tabCheck: "Check",
     dodoGreeting:
       "Hi, I'm Ah Dai. I have never studied this. What are you going to explain to me? Start talking — I won't interrupt. When you're done, I'll start asking.",
@@ -67,19 +74,14 @@ const STRINGS = {
     transcribingPlaceholder: "Transcribing…",
     imStuck: "I'm stuck",
     askRepeat: "Ask Ah Dai to repeat back",
-    done: "Done",
     meDodoCount: (me, dodo) => `Me ${me} · Ah Dai ${dodo}`,
     ruleBreaksSuffix: (n) => ` · Rule breaks ${n}`,
     dodoThinking: "Ah Dai is thinking…",
     flagTitle: "Flag a rule break",
-    marking: "Marking",
-    nothingHereYet: "Nothing here yet — go back to Talk first.",
     green: "Green",
     amber: "Amber",
     red: "Red",
     redPoints: (n) => `${n} red point${n > 1 ? "s" : ""} to revisit`,
-    nextCheck: "Next — Check",
-    backToTalk: "Back to Talk",
     checker: "Checker",
     courseMaterial: "Course material",
     materialPlaceholder: "Paste the relevant section from your textbook or notes…",
@@ -118,6 +120,14 @@ const STRINGS = {
     tagline: "一個絕不教你的聆聽者。",
     conceptLabel: "今天要解釋的概念",
     conceptPlaceholder: "例如：動量守恆",
+    subjectLabel: "學科",
+    subjectPhysics: "物理",
+    subjectChemistry: "化學",
+    subjectMath: "數學",
+    subjectBiology: "生物",
+    subjectHistory: "歷史",
+    subjectLanguage: "語文",
+    subjectOther: "其他",
     inputModeLabel: "輸入方式",
     typing: "打字",
     voice: "語音",
@@ -143,7 +153,6 @@ const STRINGS = {
       ["查核員", "貼上你的課程教材。查核員只核對你講的內容跟教材是否一致——不是核對你講得對不對。"],
     ],
     tabTalk: "對話",
-    tabMark: "標記",
     tabCheck: "查核",
     dodoGreeting:
       "嗨，我是阿呆。這個我完全沒學過。你要跟我解釋什麼？開始講吧——我不會打斷你。你講完之後，我會開始發問。",
@@ -153,19 +162,14 @@ const STRINGS = {
     transcribingPlaceholder: "轉換文字中…",
     imStuck: "我卡住了",
     askRepeat: "請阿呆複述一次",
-    done: "完成",
     meDodoCount: (me, dodo) => `我 ${me} · 阿呆 ${dodo}`,
     ruleBreaksSuffix: (n) => ` · 違規次數 ${n}`,
     dodoThinking: "阿呆正在想…",
     flagTitle: "標記違規",
-    marking: "標記",
-    nothingHereYet: "這裡還沒有內容——先回到對話畫面吧。",
     green: "綠色",
     amber: "黃色",
     red: "紅色",
     redPoints: (n) => `有 ${n} 個紅點需要回頭複習`,
-    nextCheck: "下一步 — 查核",
-    backToTalk: "回到對話",
     checker: "查核員",
     courseMaterial: "課程教材",
     materialPlaceholder: "貼上教科書或筆記裡相關的段落…",
@@ -433,6 +437,37 @@ function AccountLinks({ t, onHistory, onLogout }) {
   );
 }
 
+// Inline three-colour marking shown beside (desktop) or below (mobile) each of the
+// student's own bubbles in Talk — replaces the old standalone Mark screen.
+function MarkDots({ turn, onSetColor }) {
+  const dots = [
+    ["green", C.green],
+    ["amber", C.amber],
+    ["red", C.red],
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+      {dots.map(([k, col]) => (
+        <button
+          key={k}
+          className="fr-btn"
+          onClick={() => onSetColor(turn.id, k)}
+          title={k}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            border: turn.color === k ? "none" : "1.5px solid " + C.rule,
+            background: turn.color === k ? col : "transparent",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /* ─── main ────────────────────────────────────────────── */
 export default function FeynmanRoom() {
   const [authLoading, setAuthLoading] = useState(true);
@@ -469,6 +504,7 @@ export default function FeynmanRoom() {
   const [lang, setLang] = useState("en"); // en | zh
   const [voiceLang, setVoiceLang] = useState("mandarin"); // cantonese | mandarin (used when lang === "zh")
   const [grade, setGrade] = useState("secondary"); // elementary | secondary | university
+  const [subject, setSubject] = useState("physics");
 
   const [transcribing, setTranscribing] = useState(false);
 
@@ -476,6 +512,16 @@ export default function FeynmanRoom() {
   const prompts = PROMPTS[lang];
   const gradeLabels = { elementary: t.gradeElementary, secondary: t.gradeSecondary, university: t.gradeUniversity };
   const gradeLabel = gradeLabels[grade];
+  const subjectLabels = {
+    physics: t.subjectPhysics,
+    chemistry: t.subjectChemistry,
+    math: t.subjectMath,
+    biology: t.subjectBiology,
+    history: t.subjectHistory,
+    language: t.subjectLanguage,
+    other: t.subjectOther,
+  };
+  const subjectLabel = subjectLabels[subject];
 
   const scrollRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -544,12 +590,12 @@ export default function FeynmanRoom() {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: sessionId, concept, lang, grade, transcript: turns, material, checkerReport: report }),
+        body: JSON.stringify({ id: sessionId, concept, subject, lang, grade, transcript: turns, material, checkerReport: report }),
       });
       const data = await res.json();
       if (data.id && !sessionId) setSessionId(data.id);
     } catch (e) {}
-  }, [user, sessionId, concept, lang, grade, turns, material, report]);
+  }, [user, sessionId, concept, subject, lang, grade, turns, material, report]);
 
   useEffect(() => {
     if (!user || turns.length === 0) return;
@@ -678,7 +724,10 @@ export default function FeynmanRoom() {
     setDraft("");
     setBusy(true);
     try {
-      const conceptHeader = lang === "zh" ? "\n\n# 使用者今天要解釋的概念\n" : "\n\n# Concept the user is explaining today\n";
+      const conceptHeader =
+        lang === "zh"
+          ? "\n\n# 使用者今天要解釋的概念\n學科：" + subjectLabel + "\n概念："
+          : "\n\n# Concept the user is explaining today\nSubject: " + subjectLabel + "\nConcept: ";
       const gradeHeader =
         lang === "zh"
           ? "\n\n# 使用者的年級\n" + gradeLabel + "\n請把你問題的用詞與難度調整到適合這個年級，但仍然要完全遵守以上所有規則。"
@@ -760,17 +809,6 @@ export default function FeynmanRoom() {
   const toggleFlag = (id) =>
     setTurns((p) => p.map((t) => (t.id === id ? { ...t, flagged: !t.flagged } : t)));
 
-  // For a "I'm stuck" turn, finds the Ah Dai question that immediately preceded it,
-  // so the Mark screen (which otherwise only shows the student's own turns) can still
-  // show what the student actually got stuck on.
-  const stuckContextFor = (turn) => {
-    const idx = turns.findIndex((tn) => tn.id === turn.id);
-    for (let i = idx - 1; i >= 0; i--) {
-      if (turns[i].role === "doi") return turns[i].text;
-    }
-    return null;
-  };
-
   const counts = {
     green: myTurns.filter((t) => t.color === "green").length,
     amber: myTurns.filter((t) => t.color === "amber").length,
@@ -781,6 +819,7 @@ export default function FeynmanRoom() {
   const exportText = () => {
     const L = [];
     L.push("Feynman Room · Explanation Map");
+    L.push("Subject: " + subjectLabel);
     L.push("Concept: " + concept);
     L.push("Date: " + new Date().toLocaleString("en-US"));
     L.push("Input mode: " + (mode === "voice" ? "Voice" : "Typing"));
@@ -838,6 +877,8 @@ export default function FeynmanRoom() {
     .fr-rise{animation:rise .3s ease-out}
     @media (prefers-reduced-motion:reduce){.fr-live,.fr-rise{animation:none}}
     ::selection{background:${C.amberBg}}
+    .fr-turn-row{display:flex;flex-direction:row;align-items:center;justify-content:flex-end;gap:6px;}
+    @media (max-width:600px){.fr-turn-row{flex-direction:column;align-items:flex-end;}}
   `;
 
   const GuideSheet = (
@@ -903,6 +944,7 @@ export default function FeynmanRoom() {
               <div style={{ fontFamily: SERIF, fontSize: 16, color: C.ink }}>{s.concept || "—"}</div>
               <div style={{ fontFamily: MONO, fontSize: 11, color: C.faint, marginTop: 4 }}>
                 {new Date(s.updated_at).toLocaleString()} · {s.lang === "zh" ? "繁體中文" : "English"}
+                {s.subject ? " · " + s.subject : ""}
               </div>
             </button>
           ))}
@@ -939,7 +981,19 @@ export default function FeynmanRoom() {
                 color: tn.role === "me" ? C.ink : C.doi,
                 lineHeight: 1.6,
                 margin: "0 0 10px",
+                padding: "8px 12px",
+                borderRadius: 10,
                 whiteSpace: "pre-wrap",
+                background:
+                  tn.role !== "me"
+                    ? C.doiBg
+                    : tn.color === "green"
+                    ? C.greenBg
+                    : tn.color === "amber"
+                    ? C.amberBg
+                    : tn.color === "red"
+                    ? C.redBg
+                    : C.card,
               }}
             >
               {tn.text}
@@ -1073,6 +1127,53 @@ export default function FeynmanRoom() {
                 color: C.ink,
               }}
             />
+
+            <div style={{ marginTop: 18 }}>
+              <Eyebrow>{t.subjectLabel}</Eyebrow>
+              <div style={{ position: "relative", marginTop: 8 }}>
+                <select
+                  className="fr-in"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 36px 12px 14px",
+                    fontFamily: SANS,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    background: C.fill,
+                    border: "none",
+                    borderRadius: 12,
+                    color: C.ink,
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    MozAppearance: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="physics">{t.subjectPhysics}</option>
+                  <option value="chemistry">{t.subjectChemistry}</option>
+                  <option value="math">{t.subjectMath}</option>
+                  <option value="biology">{t.subjectBiology}</option>
+                  <option value="history">{t.subjectHistory}</option>
+                  <option value="language">{t.subjectLanguage}</option>
+                  <option value="other">{t.subjectOther}</option>
+                </select>
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                    color: C.muted,
+                    fontSize: 12,
+                  }}
+                >
+                  ▾
+                </span>
+              </div>
+            </div>
 
             <div style={{ marginTop: 18 }}>
               <Eyebrow>{t.inputModeLabel}</Eyebrow>
@@ -1250,11 +1351,10 @@ export default function FeynmanRoom() {
         >
           {concept}
         </div>
-        <div style={{ width: 230, flexShrink: 0 }}>
+        <div style={{ width: 160, flexShrink: 0 }}>
           <Segmented
             options={[
               ["talk", t.tabTalk],
-              ["mark", t.tabMark],
               ["check", t.tabCheck],
             ]}
             value={stage}
@@ -1273,6 +1373,16 @@ export default function FeynmanRoom() {
       <div style={{ background: C.paper, minHeight: "100vh", fontFamily: SANS, color: C.ink, display: "flex", flexDirection: "column" }}>
         <style>{css}</style>
         <Header />
+
+        {myCount > 0 && (
+          <div style={{ maxWidth: 720, margin: "0 auto", padding: "8px 16px 0", width: "100%" }}>
+            <div style={{ display: "flex", gap: 14, fontFamily: MONO, fontSize: 11 }}>
+              <span style={{ color: C.green }}>● {counts.green}</span>
+              <span style={{ color: C.amber }}>● {counts.amber}</span>
+              <span style={{ color: C.red }}>● {counts.red}</span>
+            </div>
+          </div>
+        )}
 
         <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", padding: "18px 16px 12px" }}>
@@ -1299,10 +1409,10 @@ export default function FeynmanRoom() {
               .filter((t) => !t.hidden)
               .map((turn) =>
                 turn.role === "me" ? (
-                  <div key={turn.id} className="fr-rise" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                  <div key={turn.id} className="fr-rise fr-turn-row" style={{ marginBottom: 10 }}>
                     <div
                       style={{
-                        maxWidth: "78%",
+                        maxWidth: "70%",
                         background:
                           turn.color === "green"
                             ? C.greenBg
@@ -1323,6 +1433,7 @@ export default function FeynmanRoom() {
                     >
                       {turn.text}
                     </div>
+                    <MarkDots turn={turn} onSetColor={setColor} />
                   </div>
                 ) : (
                   <div
@@ -1482,14 +1593,14 @@ export default function FeynmanRoom() {
               <Btn tone="ghost" small onClick={doRestate} disabled={busy || myCount < 3 || phase === "restate"}>
                 {t.askRepeat}
               </Btn>
-              <Btn tone="ghost" small onClick={() => setStage("mark")} disabled={myCount < 2}>
-                {t.done}
-              </Btn>
               <span style={{ fontFamily: MONO, fontSize: 11, color: C.faint, marginLeft: "auto" }}>
                 {t.meDodoCount(myCount, turns.filter((turn) => turn.role === "doi").length)}
                 {flagCount > 0 && t.ruleBreaksSuffix(flagCount)}
               </span>
             </div>
+            {counts.red > 0 && (
+              <p style={{ fontFamily: SANS, fontSize: 12, color: C.red, fontWeight: 600, margin: "8px 0 0" }}>{t.redPoints(counts.red)}</p>
+            )}
           </div>
         </div>
         {HistorySheet}
@@ -1497,106 +1608,7 @@ export default function FeynmanRoom() {
     );
   }
 
-  /* ── mark ── */
-  if (stage === "mark") {
-    const marked = myTurns.filter((t) => t.color).length;
-    return (
-      <div style={{ background: C.paper, minHeight: "100vh", fontFamily: SANS, color: C.ink }}>
-        <style>{css}</style>
-        <Header />
-        <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 16px 60px" }}>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-            <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 400, margin: 0 }}>{t.marking}</h2>
-            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 12, color: C.faint }}>
-              {marked}/{myCount}
-            </span>
-          </div>
 
-          <div style={{ display: "flex", gap: 16, marginBottom: 18, fontFamily: MONO, fontSize: 12 }}>
-            <span style={{ color: C.green }}>● {counts.green}</span>
-            <span style={{ color: C.amber }}>● {counts.amber}</span>
-            <span style={{ color: C.red }}>● {counts.red}</span>
-          </div>
-
-          {myTurns.length === 0 && <p style={{ color: C.faint, fontSize: 14 }}>{t.nothingHereYet}</p>}
-
-          {myTurns.map((turn) => (
-            <div
-              key={turn.id}
-              style={{
-                background: C.card,
-                borderRadius: 16,
-                padding: 16,
-                marginBottom: 12,
-                boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-                borderLeft:
-                  "4px solid " +
-                  (turn.color === "green" ? C.green : turn.color === "amber" ? C.amber : turn.color === "red" ? C.red : "transparent"),
-              }}
-            >
-              {turn.text === t.imStuck && stuckContextFor(turn) && (
-                <p
-                  style={{
-                    fontFamily: MONO,
-                    fontSize: 12,
-                    color: C.doi,
-                    background: C.doiBg,
-                    borderRadius: 8,
-                    padding: "6px 10px",
-                    margin: "0 0 8px",
-                  }}
-                >
-                  {stuckContextFor(turn)}
-                </p>
-              )}
-              <p style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 1.6, margin: "0 0 12px", whiteSpace: "pre-wrap" }}>{turn.text}</p>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[
-                  ["green", t.green, C.green, C.greenBg],
-                  ["amber", t.amber, C.amber, C.amberBg],
-                  ["red", t.red, C.red, C.redBg],
-                ].map(([k, label, col, bg]) => (
-                  <button
-                    key={k}
-                    className="fr-btn"
-                    onClick={() => setColor(turn.id, k)}
-                    style={{
-                      flex: 1,
-                      padding: "7px 0",
-                      borderRadius: 10,
-                      border: "none",
-                      fontFamily: SANS,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      background: turn.color === k ? bg : C.fill,
-                      color: turn.color === k ? col : C.muted,
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {counts.red > 0 && (
-            <div style={{ background: C.redBg, borderRadius: 14, padding: "14px 16px", margin: "8px 0 20px" }}>
-              <p style={{ fontFamily: SANS, fontSize: 13.5, color: C.red, fontWeight: 600, margin: 0 }}>{t.redPoints(counts.red)}</p>
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-            <Btn onClick={() => setStage("check")}>{t.nextCheck}</Btn>
-            <Btn tone="ghost" onClick={() => setStage("talk")}>
-              {t.backToTalk}
-            </Btn>
-          </div>
-        </div>
-        {HistorySheet}
-      </div>
-    );
-  }
 
   /* ── check ── */
   return (

@@ -12,6 +12,7 @@ export async function onRequestGet({ request, env, params }) {
   return Response.json({
     id: row.id,
     concept: row.concept,
+    subject: row.subject,
     lang: row.lang,
     grade: row.grade,
     transcript: JSON.parse(row.transcript_json || "[]"),
